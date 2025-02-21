@@ -1,0 +1,78 @@
+---
+title: "Gráfica de descripsión"
+author: "Diego Arturo Campos Grimaldi"
+date: "2025-02-21"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+Correr paqueteria
+```{r}
+install.packages("pacman")
+library("pacman")
+p_load("readr")
+p_load("dplyr",
+       "ggplot2")
+```
+Cargar base de datos
+```{r}
+PCR <- read.csv(file = "https://raw.githubusercontent.com/ManuelLaraMVZ/Transcript-mica/main/datos_miRNAs.csv")
+PCR
+
+```
+Analisis de datos:
+```{r}
+Gen_referencia <- PCR %>% 
+  filter(Condicion =="Control") %>%
+  select(-2) %>% 
+  filter(Gen=="U6 snRNA-001973")
+Gen_referencia
+
+Gen_Target <- PCR %>% 
+  filter(Condicion=="Target") %>% 
+  select(-2)
+
+
+Mean_referencia <- Gen_referencia %>% 
+  mutate(Mean_Cx=((Cx1+Cx2+Cx3)/3)) %>% 
+  mutate(Mean_Tx=((T1+T2+T3)/3)) %>% 
+  select(1,8,9)
+Mean_referencia
+
+Mean_Target <- Gen_Target %>% 
+  mutate(Mean_Cx=((Cx1+Cx2+Cx3)/3)) %>% 
+  mutate(Mean_Tx=((T1+T2+T3)/3)) %>% 
+  select(1,8,9)
+
+
+DeltaCT <- Mean_Target %>% 
+  mutate(DeltaCT_Cx = Mean_Target$Mean_Cx - Mean_referencia$Mean_Cx,
+         DeltaCT_Tx = Mean_Target$Mean_Tx - Mean_referencia$Mean_Tx,
+         DosDeltaCT_Cx = 2^-(DeltaCT_Cx),
+         DosDeltaCT_Tx = 2^-(DeltaCT_Tx),
+         DosDeltaDeltaCT = DosDeltaCT_Tx/DosDeltaCT_Cx) %>% 
+  select(1,4,5,6,7,8)
+
+
+```
+
+Graficar
+```{r}
+Grafica1 = ggplot(DeltaCT, mapping = aes(x=DosDeltaCT_Cx,
+                                         y=DosDeltaCT_Tx)) +
+  geom_point(color="#020079")+
+  theme_classic()+
+  labs(title = "Cambios de expressión de miRNAs",
+       subtitle = "gráfica de dispersión",
+       caption = "Creado por: Diego Arturo Campos Grimaldi",
+       x = "Condición control (2^DCT)",
+       y = "Tratamiento (2^DCT")+
+  theme(plot.caption = element_text(hjust = 0))+
+  geom_smooth(method = "lm", 
+              color = "#880808",
+              alpha = 0.005,
+              linewidth = 0.5)
+
+Grafica1
+```
