@@ -1,0 +1,205 @@
+---
+title: "Grafica Vulcano"
+author: "Diego Arturo Campos Grimaldi"
+date: "2025-02-26"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r}
+install.packages("pacman")
+library("pacman")
+p_load("readr")
+p_load("dplyr",
+       "ggplot2",
+       "ggrepel",
+       "matrixTests")
+```
+
+Cargar datos y extracción de gen de referencia y de interes
+
+```{r}
+PCR <- read.csv(file = "https://raw.githubusercontent.com/ManuelLaraMVZ/Transcript-mica/main/datos_miRNAs.csv")
+head(PCR)
+Gen_referencia <- PCR %>% 
+  filter(Condicion =="Control") %>%
+  select(-2)
+Gen_referencia
+
+Gen_Target <- PCR %>% 
+  filter(Condicion=="Target") %>% 
+  select(-2)
+head(Gen_Target)
+```
+
+Promedios de cada columna vertical
+
+```{r}
+Mean_Cx1 <- mean(Gen_referencia$Cx1)
+Mean_Cx1
+
+Mean_Cx2 <- mean(Gen_referencia$Cx2)
+Mean_Cx2
+
+Mean_Cx3 <- mean(Gen_referencia$Cx3)
+Mean_Cx3
+
+Mean_T1 <- mean(Gen_referencia$T1)
+Mean_T1
+
+Mean_T2 <- mean(Gen_referencia$T2)
+Mean_T2
+
+Mean_T3 <- mean(Gen_referencia$T3)
+Mean_T3
+```
+
+sacar delta Ct de cada columa de interes
+
+```{r}
+DCT <- Gen_Target %>% 
+  mutate(DCtCx1 = Cx1- Mean_Cx1) %>% 
+  mutate(DCtCx2 = Cx2- Mean_Cx2) %>% 
+  mutate(DCtCx3 = Cx3- Mean_Cx3) %>% 
+  mutate(DCtT1 = T1- Mean_T1) %>% 
+  mutate(DCtT2 = T2- Mean_T2) %>% 
+  mutate(DCtT3 = T3- Mean_T3) %>% 
+  select(-2, -3, -4, -5, -6, -7)
+
+DCT
+
+```
+
+dosDCT
+
+```{r}
+dDCt <- DCT %>% 
+  mutate(dDCt_Cx1= 2^-(DCtCx1),
+         dDCt_Cx2= 2^-(DCtCx2),
+         dDCt_Cx3= 2^-(DCtCx3),
+         dDCt_T1= 2^-(DCtT1),
+         dDCt_T2= 2^-(DCtT2),
+         dDCt_T3= 2^-(DCtT3)) %>% 
+  select(-2:-7)
+dDCt
+
+```
+
+Estadistica para obtener los valores de p
+
+```{r}
+TStudent <- row_t_welch(dDCt[,c("dDCt_Cx1","dDCt_Cx2","dDCt_Cx3")],
+                        dDCt[,c("dDCt_T1","dDCt_T2","dDCt_T3")])
+TStudent
+
+```
+
+Recuperar P
+
+```{r}
+Pvalue <- dDCt %>% 
+  mutate(PV=TStudent$pvalue, 
+         LPV=-log10(PV)) %>% 
+  select(1, "PV", "LPV")
+Pvalue
+```
+
+Obtener 2ddCT
+
+```{r}
+dosddCT <- dDCt %>% 
+  mutate(Mean_Cx=(dDCt_Cx1+dDCt_Cx2+dDCt_Cx3)/3) %>%
+  mutate(Mean_T=(dDCt_T1+dDCt_T2+dDCt_T3)/3,
+         DosDDCT=(Mean_T/Mean_Cx),
+         L2DDCT=log2(DosDDCT)) %>% 
+  select(-2:-7)
+dosddCT
+```
+
+```{r}
+V_plot <- ggplot(mapping = aes(x=dosddCT$L2DDCT,
+                               y=Pvalue$LPV))+
+  geom_point()
+V_plot
+```
+
+Definir valor estadistico de significacnia y valor de cambio
+
+```{r}
+Valor_p <-  -log10(0.05)
+FC <- log2(2)
+```
+
+Adicionar los límmites
+
+```{r}
+V_plot2 <- V_plot +
+  geom_hline(yintercept = Valor_p,
+             linetype = "dashed", color="#3266FF")+
+  geom_vline(xintercept = FC,
+             linetype="dashed", color="red")+
+  geom_vline(xintercept = -FC,
+             linetype="dashed", color="blue")+
+  labs(title = "Evaluación de cambio de expresión de miRNA",
+       subtitle = "V plot",
+       caption = "Diseño por Diego Grimaldi",
+       x = "Log2(FC)",
+       y = "-Log10(Valor p)") +
+  theme_classic()
+V_plot2
+```
+
+Nombres y colores 1. definir valor que cambiaron signifcativemtne
+
+```{r}
+Up_regulated <- dosddCT %>%
+  select(1, 5) %>% 
+  mutate(LVP=Pvalue$LPV) %>% 
+  filter(LVP > Valor_p, L2DDCT > FC)
+
+Down_regulated <- dosddCT %>%
+  select(1, 5) %>% 
+  mutate(LVP=Pvalue$LPV) %>% 
+  filter(LVP > Valor_p, L2DDCT < -FC)
+
+top.up <- Up_regulated %>%
+  arrange(LVP) %>% 
+  head(5)
+top.down <- Down_regulated %>% 
+  arrange(LVP) %>% 
+  head(5)
+
+V_plot3 <- V_plot2+
+  geom_point(data = Up_regulated,
+             x = Up_regulated$L2DDCT,
+             y = Up_regulated$LVP,
+             alpha = 1,
+             size = 3,
+             color = "#550000")+
+  geom_point(data = Down_regulated,
+             x = Down_regulated$L2DDCT,
+             y = Down_regulated$LVP,
+             alpha = 1,
+             size = 3,
+             color = "#000055")
+V_plot3
+
+
+
+```
+
+```{r}
+V_plot4 <- V_plot3+
+  geom_label_repel(data=top.up,
+                   mapping = aes(x=top.up$L2DDCT,
+                                 y=top.up$LVP),
+                   label=top.up$Gen,
+                   max.overlaps = 10)+
+  geom_label_repel(data=top.down,
+                   mapping = aes(x=top.down$L2DDCT,
+                                 y=top.down$LVP),
+                   label=top.down$Gen,
+                   max.overlaps = 10)
+V_plot4
+```
